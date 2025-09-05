@@ -9,8 +9,12 @@ const SOURCES = {
   upcoming: "https://www.onlinekhabar.com/smtm/home/ipo-corner-upcoming",
   tickers: "https://www.onlinekhabar.com/smtm/stock_live/live-trading",
   news: "https://www.onlinekhabar.com/wp-json/okapi/v1/category-posts?category=share-market",
-  indices: "https://www.onlinekhabar.com/smtm/home/indices-data/nepse/1d", // Added new source
+  indices: "https://www.onlinekhabar.com/smtm/home/indices-data/nepse/1d",
+  sectorPerformance: "https://www.onlinekhabar.com/smtm/stock_live/sector-performance",
+  marketStatus: "https://www.onlinekhabar.com/smtm/home/market-status",
 };
+
+const INDICES_BASE_URL = "https://www.onlinekhabar.com/smtm/home/indices-data/nepse";
 // In-memory cache store
 const cache = {};
 // Generic fetch with caching
@@ -65,11 +69,52 @@ app.get("/api/news", async (req, res) => {
   }
 });
 
-// ✅ Indices (NEW ENDPOINT)
+// ✅ Indices (1d - default)
 app.get("/api/indices", async (req, res) => {
   try {
     const data = await fetchWithCache("indices", SOURCES.indices);
     res.json({ success: true, type: "indices", data: data.response });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ✅ Indices with time range parameter (1d, 1m, 3m, 1y, 5y, all)
+app.get("/api/indices/:timeRange", async (req, res) => {
+  try {
+    const { timeRange } = req.params;
+    // Validate time range
+    const validRanges = ["1d", "1m", "3m", "1y", "5y", "all"];
+    if (!validRanges.includes(timeRange)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Invalid time range. Use one of: 1d, 1m, 3m, 1y, 5y, all" 
+      });
+    }
+    
+    const url = `${INDICES_BASE_URL}/${timeRange}`;
+    const data = await fetchWithCache(`indices_${timeRange}`, url);
+    res.json({ success: true, type: "indices", timeRange, data: data.response });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ✅ Sector Performance
+app.get("/api/sector-performance", async (req, res) => {
+  try {
+    const data = await fetchWithCache("sectorPerformance", SOURCES.sectorPerformance);
+    res.json({ success: true, type: "sectorPerformance", data: data.response });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ✅ Market Status (NEW ENDPOINT)
+app.get("/api/market-status", async (req, res) => {
+  try {
+    const data = await fetchWithCache("marketStatus", SOURCES.marketStatus);
+    res.json({ success: true, type: "marketStatus", data: data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -82,14 +127,39 @@ app.get("/api/ipos", async (req, res) => {
       fetchWithCache("ongoing", SOURCES.ongoing),
       fetchWithCache("upcoming", SOURCES.upcoming),
       fetchWithCache("tickers", SOURCES.tickers),
-      fetchWithCache("indices", SOURCES.indices), // Added indices to combined endpoint
+      fetchWithCache("indices", SOURCES.indices),
     ]);
     res.json({
       success: true,
       ongoing: ongoing.response,
       upcoming: upcoming.response,
       tickers: tickers.response ?? tickers,
-      indices: indices.response, // Added indices to response
+      indices: indices.response,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ✅ Combined All (including sector performance and market status)
+app.get("/api/all", async (req, res) => {
+  try {
+    const [ongoing, upcoming, tickers, indices, sectorPerformance, marketStatus] = await Promise.all([
+      fetchWithCache("ongoing", SOURCES.ongoing),
+      fetchWithCache("upcoming", SOURCES.upcoming),
+      fetchWithCache("tickers", SOURCES.tickers),
+      fetchWithCache("indices", SOURCES.indices),
+      fetchWithCache("sectorPerformance", SOURCES.sectorPerformance),
+      fetchWithCache("marketStatus", SOURCES.marketStatus),
+    ]);
+    res.json({
+      success: true,
+      ongoing: ongoing.response,
+      upcoming: upcoming.response,
+      tickers: tickers.response ?? tickers,
+      indices: indices.response,
+      sectorPerformance: sectorPerformance.response,
+      marketStatus: marketStatus.response,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
