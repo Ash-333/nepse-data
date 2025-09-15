@@ -292,42 +292,61 @@ async function fetchMarketStatus() {
   }
 }
 
-// Function to fetch all other data (every 5 minutes)
+// Function to fetch all other data (every 5 minutes during market hours on business days)
 async function fetchOtherData() {
   try {
-    console.log('🔄 Fetching other data (tickers, news, indices, sector performance)...');
+    // Check if current time is within the allowed window (10:59 AM to 3:00 PM)
     const now = getCurrentTimeInNepal();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
     
-    const [tickersData, newsData, indicesData, sectorPerformanceData] = await Promise.all([
-      fetch(SOURCES.tickers).then(res => res.json()),
-      fetch(SOURCES.news).then(res => res.json()),
-      fetch(SOURCES.indices).then(res => res.json()),
-      fetch(SOURCES.sectorPerformance).then(res => res.json())
-    ]);
+    // Convert to minutes since midnight for easier comparison
+    const currentTimeInMinutes = hours * 60 + minutes;
+    const startTimeInMinutes = 10 * 60 + 30; // 10:59 AM
+    const endTimeInMinutes = 15 * 60; // 3:00 PM
     
-    // Update database
-    await Cache.findOneAndUpdate(
-      { key: 'tickers' },
-      { data: tickersData, timestamp: now },
-      { upsert: true }
-    );
-    await Cache.findOneAndUpdate(
-      { key: 'news' },
-      { data: newsData, timestamp: now },
-      { upsert: true }
-    );
-    await Cache.findOneAndUpdate(
-      { key: 'indices' },
-      { data: indicesData, timestamp: now },
-      { upsert: true }
-    );
-    await Cache.findOneAndUpdate(
-      { key: 'sectorPerformance' },
-      { data: sectorPerformanceData, timestamp: now },
-      { upsert: true }
-    );
+    // Check if it's a business day (Sunday to Thursday) and within the allowed time window
+    const isBusinessDay = dayOfWeek >= 0 && dayOfWeek <= 4; // Sunday (0) to Thursday (4)
+    const isWithinTimeWindow = currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes;
     
-    console.log('✅ Other data updated in DB');
+    if (isBusinessDay && isWithinTimeWindow) {
+      console.log('🔄 Fetching other data (tickers, news, indices, sector performance)...');
+      
+      const [tickersData, newsData, indicesData, sectorPerformanceData] = await Promise.all([
+        fetch(SOURCES.tickers).then(res => res.json()),
+        fetch(SOURCES.news).then(res => res.json()),
+        fetch(SOURCES.indices).then(res => res.json()),
+        fetch(SOURCES.sectorPerformance).then(res => res.json())
+      ]);
+      
+      // Update database
+      await Cache.findOneAndUpdate(
+        { key: 'tickers' },
+        { data: tickersData, timestamp: now },
+        { upsert: true }
+      );
+      await Cache.findOneAndUpdate(
+        { key: 'news' },
+        { data: newsData, timestamp: now },
+        { upsert: true }
+      );
+      await Cache.findOneAndUpdate(
+        { key: 'indices' },
+        { data: indicesData, timestamp: now },
+        { upsert: true }
+      );
+      await Cache.findOneAndUpdate(
+        { key: 'sectorPerformance' },
+        { data: sectorPerformanceData, timestamp: now },
+        { upsert: true }
+      );
+      
+      console.log('✅ Other data updated in DB');
+    } else {
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      console.log(`⏭️ Skipping other data fetch - ${dayNames[dayOfWeek]} ${hours}:${minutes.toString().padStart(2, '0')} (outside business hours or time window)`);
+    }
   } catch (error) {
     console.error('❌ Error fetching other data:', error);
   }
@@ -350,7 +369,7 @@ cron.schedule('59 14 * * *', fetchMarketStatus, {
   timezone: "Asia/Kathmandu"
 });
 
-// All other data every 5 minutes (Nepal Time)
+// All other data every 5 minutes during market hours (10:59 AM to 3:00 PM) on business days (Sunday to Thursday)
 cron.schedule('*/5 * * * *', fetchOtherData, {
   scheduled: true,
   timezone: "Asia/Kathmandu"
@@ -657,7 +676,7 @@ app.listen(PORT, async () => {
   console.log("🕐 Scheduled tasks initialized (Nepal Time - Asia/Kathmandu):");
   console.log("   - IPO data: 10:00 AM and 8:00 PM");
   console.log("   - Market status: 11:00 AM and 2:59:59 PM");
-  console.log("   - Other data: Every 5 minutes");
+  console.log("   - Other data: Every 5 minutes (10:59 AM to 3:00 PM, Sunday to Thursday)");
   console.log("💾 Data caching enabled in MongoDB");
   console.log("🌍 Timezone set to Asia/Kathmandu (Nepal Time)");
   
