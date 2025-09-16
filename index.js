@@ -8,7 +8,7 @@ import cron from 'node-cron';
 process.env.TZ = 'Asia/Kathmandu';
 
 const app = express();
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 
 // Initialize Expo SDK
 const expo = new Expo();
@@ -24,7 +24,7 @@ const previousStates = {
 };
 
 const SOURCES = {
-  ongoing: "https://www.onlinekhabar.com/smtm/home/ipo-corner-ongoing",
+  ongoing: "https://www.nepalipaisa.com/api/GetIpos?stockSymbol=&pageNo=1&itemsPerPage=10&pagePerDisplay=5",
   upcoming: "https://www.onlinekhabar.com/smtm/home/ipo-corner-upcoming",
   tickers: "https://www.onlinekhabar.com/smtm/stock_live/live-trading",
   news: "https://www.onlinekhabar.com/wp-json/okapi/v1/category-posts?category=share-market",
@@ -71,23 +71,23 @@ async function fetchWithCache(key, url) {
   // Check if we have fresh data in the database
   const cachedData = await Cache.findOne({ key });
   const now = getCurrentTimeInNepal();
-  
+
   if (cachedData && (now - cachedData.timestamp) < CACHE_TTL) {
     return cachedData.data;
   }
-  
+
   // Fetch fresh data
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
   const data = await res.json();
-  
+
   // Update the database with fresh data
   await Cache.findOneAndUpdate(
     { key },
     { data, timestamp: now },
     { upsert: true }
   );
-  
+
   return data;
 }
 
@@ -110,7 +110,7 @@ app.post("/api/register-token", async (req, res) => {
     res.json({ success: true, message: "Token registered successfully" });
   } catch (error) {
     console.error("Error saving token:", error);
-    res.status(500).json({ success: false, error: "Internal server error"+" "+error });
+    res.status(500).json({ success: false, error: "Internal server error" + " " + error });
   }
 });
 
@@ -190,9 +190,17 @@ async function checkForNewIpos(currentIpos, type) {
     previousStates[`${type}Ipos`] = currentIpos;
     return;
   }
-  const newIpos = currentIpos.filter(
-    (current) => !previousIpos.some((prev) => prev.companyName === current.companyName)
-  );
+
+  // For ongoing IPOs, use ipoId as unique identifier
+  // For upcoming IPOs, use companyName as unique identifier
+  const newIpos = currentIpos.filter((current) => {
+    if (type === 'ongoing') {
+      return !previousIpos.some((prev) => prev.ipoId === current.ipoId);
+    } else {
+      return !previousIpos.some((prev) => prev.companyName === current.companyName);
+    }
+  });
+
   if (newIpos.length > 0) {
     const ipoList = newIpos.map((ipo) => ipo.companyName).join(", ");
     await sendNotificationToAll(
@@ -203,7 +211,7 @@ async function checkForNewIpos(currentIpos, type) {
         ipoType: type,
         companies: newIpos.map((ipo) => ({
           name: ipo.companyName,
-          symbol: ipo.symbol,
+          symbol: type === 'ongoing' ? ipo.stockSymbol : ipo.symbol,
         })),
         timestamp: Date.now(),
       }
@@ -232,18 +240,26 @@ async function fetchAndStoreData(key, url) {
   }
 }
 
-// Function to fetch IPO data (both ongoing and upcoming)
+// Function to fetch IPO data (ongoing from new source, upcoming from old source)
 async function fetchIpoData() {
   try {
     console.log('🔄 Fetching IPO data...');
-    const [ongoingData, upcomingData] = await Promise.all([
-      fetch(SOURCES.ongoing),
-      fetch(SOURCES.upcoming)
-    ]);
-    
-    const ongoingIpos = (await ongoingData.json()).response;
-    const upcomingIpos = (await upcomingData.json()).response;
-    
+
+    // Fetch ongoing IPOs from new source
+    const ongoingRes = await fetch(SOURCES.ongoing);
+    const ongoingData = await ongoingRes.json();
+    const allIpos = ongoingData.result.data;
+
+    // Filter ongoing IPOs: status "Open" and not "Mutual Fund"
+    const ongoingIpos = allIpos.filter(ipo =>
+      ipo.status === "Open" && ipo.sectorName !== "Mutual Fund"
+    );
+
+    // Fetch upcoming IPOs from old source (unchanged)
+    const upcomingRes = await fetch(SOURCES.upcoming);
+    const upcomingData = await upcomingRes.json();
+    const upcomingIpos = upcomingData.response;
+
     // Update database
     const now = getCurrentTimeInNepal();
     await Cache.findOneAndUpdate(
@@ -256,11 +272,11 @@ async function fetchIpoData() {
       { data: { response: upcomingIpos }, timestamp: now },
       { upsert: true }
     );
-    
+
     // Check for new IPOs
     await checkForNewIpos(ongoingIpos, 'ongoing');
     await checkForNewIpos(upcomingIpos, 'upcoming');
-    
+
     console.log('✅ IPO data updated in DB');
   } catch (error) {
     console.error('❌ Error fetching IPO data:', error);
@@ -274,7 +290,7 @@ async function fetchMarketStatus() {
     const res = await fetch(SOURCES.marketStatus);
     const data = await res.json();
     const marketStatus = data.response;
-    
+
     // Update database
     const now = getCurrentTimeInNepal();
     await Cache.findOneAndUpdate(
@@ -282,10 +298,10 @@ async function fetchMarketStatus() {
       { data: { response: marketStatus }, timestamp: now },
       { upsert: true }
     );
-    
+
     // Check for status changes
     await checkMarketStatusChange(marketStatus);
-    
+
     console.log('✅ Market status updated in DB');
   } catch (error) {
     console.error('❌ Error fetching market status:', error);
@@ -300,26 +316,26 @@ async function fetchOtherData() {
     const hours = now.getHours();
     const minutes = now.getMinutes();
     const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    
+
     // Convert to minutes since midnight for easier comparison
     const currentTimeInMinutes = hours * 60 + minutes;
     const startTimeInMinutes = 10 * 60 + 30; // 10:59 AM
     const endTimeInMinutes = 15 * 60; // 3:00 PM
-    
+
     // Check if it's a business day (Sunday to Thursday) and within the allowed time window
     const isBusinessDay = dayOfWeek >= 0 && dayOfWeek <= 4; // Sunday (0) to Thursday (4)
     const isWithinTimeWindow = currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes;
-    
+
     if (isBusinessDay && isWithinTimeWindow) {
       console.log('🔄 Fetching other data (tickers, news, indices, sector performance)...');
-      
+
       const [tickersData, newsData, indicesData, sectorPerformanceData] = await Promise.all([
         fetch(SOURCES.tickers).then(res => res.json()),
         fetch(SOURCES.news).then(res => res.json()),
         fetch(SOURCES.indices).then(res => res.json()),
         fetch(SOURCES.sectorPerformance).then(res => res.json())
       ]);
-      
+
       // Update database
       await Cache.findOneAndUpdate(
         { key: 'tickers' },
@@ -341,7 +357,7 @@ async function fetchOtherData() {
         { data: sectorPerformanceData, timestamp: now },
         { upsert: true }
       );
-      
+
       console.log('✅ Other data updated in DB');
     } else {
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -380,14 +396,14 @@ cron.schedule('*/5 * * * *', fetchOtherData, {
 app.get("/api/ipos/ongoing", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'ongoing' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 Ongoing IPOs not in cache, fetching now...');
       const data = await fetchAndStoreData('ongoing', SOURCES.ongoing);
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "ongoing", data: cached.data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -397,14 +413,14 @@ app.get("/api/ipos/ongoing", async (req, res) => {
 app.get("/api/ipos/upcoming", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'upcoming' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 Upcoming IPOs not in cache, fetching now...');
       const data = await fetchAndStoreData('upcoming', SOURCES.upcoming);
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "upcoming", data: cached.data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -414,14 +430,14 @@ app.get("/api/ipos/upcoming", async (req, res) => {
 app.get("/api/tickers", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'tickers' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 Tickers not in cache, fetching now...');
       const data = await fetchAndStoreData('tickers', SOURCES.tickers);
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "tickers", data: cached.data.response ?? cached.data });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -431,14 +447,14 @@ app.get("/api/tickers", async (req, res) => {
 app.get("/api/news", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'news' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 News not in cache, fetching now...');
       const data = await fetchAndStoreData('news', SOURCES.news);
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "news", data: cached.data.data.news });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -448,14 +464,14 @@ app.get("/api/news", async (req, res) => {
 app.get("/api/indices", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'indices' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 Indices not in cache, fetching now...');
       const data = await fetchAndStoreData('indices', SOURCES.indices);
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "indices", data: cached.data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -474,28 +490,28 @@ app.get("/api/indices/:timeRange", async (req, res) => {
     }
     const url = `${INDICES_BASE_URL}/${timeRange}`;
     const key = `indices_${timeRange}`;
-    
+
     // Check if we have fresh data in the database
     let cached = await Cache.findOne({ key });
     const now = getCurrentTimeInNepal();
-    
+
     if (!cached || (now - cached.timestamp) >= CACHE_TTL) {
       console.log(`🔄 Indices for ${timeRange} not in cache or expired, fetching now...`);
       // Fetch fresh data
       const fetchRes = await fetch(url);
       if (!fetchRes.ok) throw new Error(`Failed to fetch: ${fetchRes.status}`);
       const data = await fetchRes.json();
-      
+
       // Update the database with fresh data
       await Cache.findOneAndUpdate(
         { key },
         { data, timestamp: now },
         { upsert: true }
       );
-      
+
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "indices", timeRange, data: cached.data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -505,14 +521,14 @@ app.get("/api/indices/:timeRange", async (req, res) => {
 app.get("/api/sector-performance", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'sectorPerformance' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 Sector performance not in cache, fetching now...');
       const data = await fetchAndStoreData('sectorPerformance', SOURCES.sectorPerformance);
       cached = { data };
     }
-    
+
     res.json({ success: true, type: "sectorPerformance", data: cached.data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -522,43 +538,15 @@ app.get("/api/sector-performance", async (req, res) => {
 app.get("/api/market-status", async (req, res) => {
   try {
     let cached = await Cache.findOne({ key: 'marketStatus' });
-    
+
     // If data not found in cache, fetch it
     if (!cached) {
       console.log('🔄 Market status not in cache, fetching now...');
       const data = await fetchAndStoreData('marketStatus', SOURCES.marketStatus);
       cached = { data };
     }
-    
-    res.json({ success: true, type: "marketStatus", data: cached.data.response });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
-app.get("/api/ipos", async (req, res) => {
-  try {
-    let ongoing = await Cache.findOne({ key: 'ongoing' });
-    let upcoming = await Cache.findOne({ key: 'upcoming' });
-    
-    // If data not found in cache, fetch it
-    if (!ongoing) {
-      console.log('🔄 Ongoing IPOs not in cache, fetching now...');
-      const data = await fetchAndStoreData('ongoing', SOURCES.ongoing);
-      ongoing = { data };
-    }
-    
-    if (!upcoming) {
-      console.log('🔄 Upcoming IPOs not in cache, fetching now...');
-      const data = await fetchAndStoreData('upcoming', SOURCES.upcoming);
-      upcoming = { data };
-    }
-    
-    res.json({
-      success: true,
-      ongoing: ongoing.data.response,
-      upcoming: upcoming.data.response,
-    });
+    res.json({ success: true, type: "marketStatus", data: cached.data.response });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -572,10 +560,10 @@ app.get("/api/all", async (req, res) => {
     let indices = await Cache.findOne({ key: 'indices' });
     let sectorPerformance = await Cache.findOne({ key: 'sectorPerformance' });
     let marketStatus = await Cache.findOne({ key: 'marketStatus' });
-    
+
     // If any data not found in cache, fetch it
     const fetchPromises = [];
-    
+
     if (!ongoing) {
       console.log('🔄 Ongoing IPOs not in cache, fetching now...');
       fetchPromises.push(
@@ -584,7 +572,7 @@ app.get("/api/all", async (req, res) => {
         })
       );
     }
-    
+
     if (!upcoming) {
       console.log('🔄 Upcoming IPOs not in cache, fetching now...');
       fetchPromises.push(
@@ -593,7 +581,7 @@ app.get("/api/all", async (req, res) => {
         })
       );
     }
-    
+
     if (!tickers) {
       console.log('🔄 Tickers not in cache, fetching now...');
       fetchPromises.push(
@@ -602,7 +590,7 @@ app.get("/api/all", async (req, res) => {
         })
       );
     }
-    
+
     if (!indices) {
       console.log('🔄 Indices not in cache, fetching now...');
       fetchPromises.push(
@@ -611,7 +599,7 @@ app.get("/api/all", async (req, res) => {
         })
       );
     }
-    
+
     if (!sectorPerformance) {
       console.log('🔄 Sector performance not in cache, fetching now...');
       fetchPromises.push(
@@ -620,7 +608,7 @@ app.get("/api/all", async (req, res) => {
         })
       );
     }
-    
+
     if (!marketStatus) {
       console.log('🔄 Market status not in cache, fetching now...');
       fetchPromises.push(
@@ -629,12 +617,12 @@ app.get("/api/all", async (req, res) => {
         })
       );
     }
-    
+
     // Wait for all fetches to complete
     if (fetchPromises.length > 0) {
       await Promise.all(fetchPromises);
     }
-    
+
     res.json({
       success: true,
       ongoing: ongoing.data.response,
@@ -652,17 +640,17 @@ app.get("/api/all", async (req, res) => {
 /* -------------------  Initialize Data on Startup  ------------------- */
 async function initializeData() {
   console.log('🚀 Initializing data on startup...');
-  
+
   try {
     // Fetch IPO data
     await fetchIpoData();
-    
+
     // Fetch market status
     await fetchMarketStatus();
-    
+
     // Fetch other data
     await fetchOtherData();
-    
+
     console.log('✅ All data initialized successfully');
   } catch (error) {
     console.error('❌ Error initializing data:', error);
@@ -679,7 +667,7 @@ app.listen(PORT, async () => {
   console.log("   - Other data: Every 5 minutes (10:59 AM to 3:00 PM, Sunday to Thursday)");
   console.log("💾 Data caching enabled in MongoDB");
   console.log("🌍 Timezone set to Asia/Kathmandu (Nepal Time)");
-  
+
   // Initialize data on startup
   await initializeData();
 });
