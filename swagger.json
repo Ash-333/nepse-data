@@ -1,0 +1,820 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "IPO Alert API",
+    "version": "2.0.0",
+    "description": "A comprehensive API for Nepal stock market data, IPO tracking, portfolio management, and price alerts",
+    "contact": {
+      "name": "IPO Alert Team",
+      "email": "support@ipo-alert.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://ipo-alert-latest.onrender.com",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "email": {"type": "string", "format": "email"},
+          "name": {"type": "string"},
+          "profilePicture": {"type": "string"},
+          "authProvider": {"type": "string", "enum": ["local", "google"]},
+          "lastLogin": {"type": "string", "format": "date-time"},
+          "createdAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "token": {"type": "string"},
+          "user": {"$ref": "#/components/schemas/User"},
+          "error": {"type": "string"}
+        }
+      },
+      "PortfolioHolding": {
+        "type": "object",
+        "properties": {
+          "_id": {"type": "string"},
+          "userId": {"type": "string"},
+          "ticker": {"type": "string"},
+          "quantity": {"type": "number"},
+          "averagePrice": {"type": "number"},
+          "purchaseDate": {"type": "string", "format": "date"},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "updatedAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "PriceAlert": {
+        "type": "object",
+        "properties": {
+          "_id": {"type": "string"},
+          "userId": {"type": "string"},
+          "ticker": {"type": "string"},
+          "targetPrice": {"type": "number"},
+          "condition": {"type": "string", "enum": ["above", "below"]},
+          "type": {"type": "string", "enum": ["one-time", "recurring"]},
+          "triggered": {"type": "boolean"},
+          "lastTriggered": {"type": "string", "format": "date-time"},
+          "createdAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "IPOData": {
+        "type": "object",
+        "properties": {
+          "company_name": {"type": "string"},
+          "finid": {"type": "number"},
+          "Sector": {"type": "string"},
+          "type": {"type": "string"},
+          "shares_offered": {"type": "number"},
+          "issue_manager": {"type": "string"},
+          "offer_price": {"type": "string"},
+          "offered_to": {"type": "string"},
+          "application_date": {"type": "string"},
+          "approval_date": {"type": "string"},
+          "open_date": {"type": "string"},
+          "close_date": {"type": "string"},
+          "Status": {"type": "string"},
+          "filing_date": {"type": "string"}
+        }
+      },
+      "StockData": {
+        "type": "object",
+        "properties": {
+          "ticker": {"type": "string"},
+          "indices": {"type": "string"},
+          "ticker_name": {"type": "string"},
+          "ltp": {"type": "number"},
+          "ltv": {"type": "number"},
+          "point_change": {"type": "number"},
+          "percentage_change": {"type": "number"},
+          "open": {"type": "number"},
+          "high": {"type": "number"},
+          "low": {"type": "number"},
+          "volume": {"type": "number"},
+          "previousClosing": {"type": "number"},
+          "calculated_on": {"type": "string"},
+          "amount": {"type": "number"},
+          "datasource": {"type": "string"},
+          "icon": {"type": "string"}
+        }
+      },
+      "NewsItem": {
+        "type": "object",
+        "properties": {
+          "image": {"type": "string"},
+          "link": {"type": "string"},
+          "title": {"type": "string"},
+          "nepali_date": {"type": "string"},
+          "excerpt": {"type": "string"}
+        }
+      },
+      "TrendingStock": {
+        "type": "object",
+        "properties": {
+          "ticker": {"type": "string"},
+          "ticker_name": {"type": "string"},
+          "latest_price": {"type": "string"},
+          "points_change": {"type": "number"},
+          "percentage_change": {"type": "number"},
+          "traded_of_mkt_cap": {"type": "number"}
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean", "example": false},
+          "error": {"type": "string"}
+        }
+      }
+    }
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Health check endpoint",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Server status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {"type": "string"},
+                    "version": {"type": "string"},
+                    "status": {"type": "string"},
+                    "timestamp": {"type": "string"},
+                    "timezone": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password", "name"],
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "password": {"type": "string", "minLength": 6},
+                  "name": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AuthResponse"}
+              }
+            }
+          },
+          "400": {
+            "description": "Registration failed",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login user",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "password": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AuthResponse"}
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google": {
+      "post": {
+        "summary": "Google OAuth login",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["idToken"],
+                "properties": {
+                  "idToken": {"type": "string", "description": "Google ID token"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Google login successful",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AuthResponse"}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Google token",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/profile": {
+      "get": {
+        "summary": "Get user profile",
+        "tags": ["Authentication"],
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "user": {"$ref": "#/components/schemas/User"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/portfolio": {
+      "get": {
+        "summary": "Get user's portfolio holdings",
+        "tags": ["Portfolio"],
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Portfolio holdings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/PortfolioHolding"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add portfolio holding",
+        "tags": ["Portfolio"],
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["ticker", "quantity", "averagePrice", "purchaseDate"],
+                "properties": {
+                  "ticker": {"type": "string"},
+                  "quantity": {"type": "number"},
+                  "averagePrice": {"type": "number"},
+                  "purchaseDate": {"type": "string", "format": "date"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Portfolio holding added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"$ref": "#/components/schemas/PortfolioHolding"},
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/portfolio/{id}": {
+      "put": {
+        "summary": "Update portfolio holding",
+        "tags": ["Portfolio"],
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quantity": {"type": "number"},
+                  "averagePrice": {"type": "number"},
+                  "purchaseDate": {"type": "string", "format": "date"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Portfolio holding updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"$ref": "#/components/schemas/PortfolioHolding"},
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete portfolio holding",
+        "tags": ["Portfolio"],
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio holding deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/price-alerts": {
+      "get": {
+        "summary": "Get user's price alerts",
+        "tags": ["Price Alerts"],
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Price alerts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/PriceAlert"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create price alert",
+        "tags": ["Price Alerts"],
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["ticker", "targetPrice", "condition"],
+                "properties": {
+                  "ticker": {"type": "string"},
+                  "targetPrice": {"type": "number"},
+                  "condition": {"type": "string", "enum": ["above", "below"]},
+                  "type": {"type": "string", "enum": ["one-time", "recurring"], "default": "one-time"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Price alert created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"$ref": "#/components/schemas/PriceAlert"},
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ipos/ongoing": {
+      "get": {
+        "summary": "Get ongoing IPOs",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "List of ongoing IPOs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/IPOData"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ipos/upcoming": {
+      "get": {
+        "summary": "Get upcoming IPOs",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "List of upcoming IPOs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/IPOData"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tickers": {
+      "get": {
+        "summary": "Get stock tickers",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "List of stock data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/StockData"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/news": {
+      "get": {
+        "summary": "Get financial news",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "List of financial news",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/NewsItem"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/indices/{range}": {
+      "get": {
+        "summary": "Get market indices data",
+        "tags": ["Public Data"],
+        "parameters": [
+          {
+            "name": "range",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["1d", "1m", "3m", "1y", "5y", "all"]
+            },
+            "description": "Time range for indices data"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Market indices data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "timeRange": {"type": "string"},
+                    "data": {"type": "array"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range parameter",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sector-performance": {
+      "get": {
+        "summary": "Get sector performance data",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "Sector performance data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {"type": "array"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/market-status": {
+      "get": {
+        "summary": "Get market status",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "Market status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {"type": "array"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trending-stocks": {
+      "get": {
+        "summary": "Get trending stocks",
+        "tags": ["Public Data"],
+        "responses": {
+          "200": {
+            "description": "List of trending stocks by trading volume",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "type": {"type": "string"},
+                    "data": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/TrendingStock"}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to fetch trending stocks",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/register-token": {
+      "post": {
+        "summary": "Register push notification token (authenticated)",
+        "tags": ["Notifications"],
+        "security": [{"bearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["token"],
+                "properties": {
+                  "token": {"type": "string", "description": "Expo push token"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "message": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "System",
+      "description": "System health and status endpoints"
+    },
+    {
+      "name": "Authentication",
+      "description": "User authentication and authorization"
+    },
+    {
+      "name": "Portfolio",
+      "description": "Portfolio management operations"
+    },
+    {
+      "name": "Price Alerts",
+      "description": "Price alert management"
+    },
+    {
+      "name": "Public Data",
+      "description": "Public market data endpoints"
+    },
+    {
+      "name": "Notifications",
+      "description": "Push notification management"
+    }
+  ]
+}
