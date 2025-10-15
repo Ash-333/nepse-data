@@ -13,17 +13,21 @@ function isBusinessDay() {
 // Helper function to check if market is open (9:15 AM to 3:30 PM Nepal time)
 function isMarketHours() {
   const now = new Date();
-  const nepalTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" }));
+  const nepalTime = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Kathmandu" })
+  );
+
   const hours = nepalTime.getHours();
   const minutes = nepalTime.getMinutes();
-  
-  // Market opens at 9:15 AM and closes at 3:30 PM
-  const marketStart = 9 * 60 + 15; // 9:15 AM in minutes
-  const marketEnd = 15 * 60 + 30;  // 3:30 PM in minutes
+
+  // Market opens at 11:00 AM and closes at 3:00 PM
+  const marketStart = 11 * 60;       // 11:00 AM in minutes
+  const marketEnd = 15 * 60;         // 3:00 PM in minutes
   const currentTime = hours * 60 + minutes;
-  
+
   return currentTime >= marketStart && currentTime <= marketEnd;
 }
+
 
 // Fetch IPO data (2 times a day)
 async function fetchIpoData() {
@@ -91,7 +95,7 @@ export function initializeDataFetchingService() {
       if (!isBusinessDay()) {
         console.log(`⏭️ Skipping price alerts - ${currentDay} is not a business day`);
       } else if (!isMarketHours()) {
-        console.log(`⏭️ Skipping price alerts - ${currentTime} is outside market hours (9:15 AM - 3:30 PM)`);
+        console.log(`⏭️ Skipping price alerts - ${currentTime} is outside market hours (11:00 AM - 3:00 PM)`);
       }
     }
   }, {

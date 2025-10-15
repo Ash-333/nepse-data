@@ -5,6 +5,7 @@ import { connectDB } from './config/database.js';
 import { PORT } from './config/constants.js';
 import { initializePriceAlertService } from './services/priceAlertService.js';
 import { initializeDataFetchingService } from './services/dataFetchingService.js';
+import { initializeMarketStatusService } from './services/marketStatusService.js';
 import { setupSwagger } from './config/swagger.js';
 
 // Load environment variables
@@ -17,6 +18,7 @@ import portfolioRoutes from './routes/portfolio.js';
 import priceAlertRoutes from './routes/priceAlerts.js';
 import publicDataRoutes from './routes/publicData.js';
 import notificationRoutes from './routes/notifications.js';
+import { sendHelloWorldNotification } from "./services/sendHelloWorldNotification.js";
 
 // Set the timezone to Nepal (Asia/Kathmandu)
 process.env.TZ = 'Asia/Kathmandu';
@@ -102,6 +104,8 @@ async function startServer() {
     // Initialize background services
     initializePriceAlertService();
     initializeDataFetchingService();
+    initializeMarketStatusService();
+    sendHelloWorldNotification();
     
     // Start the server
     app.listen(PORT, () => {

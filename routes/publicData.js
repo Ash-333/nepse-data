@@ -36,7 +36,7 @@ router.get("/ipos/ongoing", async (req, res) => {
     res.json({
       success: true,
       type: "ongoing",
-      data: data.ResponseData || [],
+      data: data.result.data || [],
     });
   } catch (error) {
     console.error("Error fetching ongoing IPOs:", error);
