@@ -10,7 +10,7 @@ router.get("/stock/:ticker", async (req, res) => {
   try {
     const ticker = req.params.ticker;
     const data = await getTickerData(ticker); // Use the service
-    
+
     // Send the restructured response
     res.status(200).json({
       success: true,
@@ -33,10 +33,17 @@ router.get("/stock/:ticker", async (req, res) => {
 router.get("/ipos/ongoing", async (req, res) => {
   try {
     const data = await fetchWithCache("ongoing-ipos", SOURCES.ongoing);
+    
+    // Check if the response has the expected structure
+    if (!data || !data.data || !Array.isArray(data.data.content)) {
+      throw new Error("Invalid response structure from IPO API");
+    }
+    
+    // Return the data in the new format, preserving all fields
     res.json({
       success: true,
       type: "ongoing",
-      data: data.result.data || [],
+      data: data.data.content
     });
   } catch (error) {
     console.error("Error fetching ongoing IPOs:", error);
@@ -97,17 +104,17 @@ router.get("/indices/:range", async (req, res) => {
   try {
     const { range } = req.params;
     const validRanges = ["1d", "1m", "3m", "1y", "5y", "all"];
-    
+
     if (!validRanges.includes(range)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Invalid range. Valid ranges: 1d, 1m, 3m, 1y, 5y, all" 
+      return res.status(400).json({
+        success: false,
+        error: "Invalid range. Valid ranges: 1d, 1m, 3m, 1y, 5y, all"
       });
     }
 
     const url = `${INDICES_BASE_URL}/${range}`;
     const data = await fetchWithCache(`indices-${range}`, url);
-    
+
     let responseData = {};
     if (data && data.response) {
       if (data.response.chartData && Array.isArray(data.response.chartData)) {
@@ -116,7 +123,7 @@ router.get("/indices/:range", async (req, res) => {
           timestamp: item.timestamp,
           volume: parseFloat(item.volume || 0)
         }));
-        
+
         responseData = {
           indices_name: "NEPSE",
           point_change: parseFloat(data.response.point_change || 0),
@@ -140,7 +147,7 @@ router.get("/indices/:range", async (req, res) => {
         };
       }
     }
-    
+
     res.json({
       success: true,
       type: "indices",
@@ -157,7 +164,7 @@ router.get("/indices/:range", async (req, res) => {
 router.get("/sector-performance", async (req, res) => {
   try {
     const data = await fetchWithCache("sector-performance", SOURCES.sectorPerformance);
-    
+
     let sectorData = [];
     if (data && data.response && Array.isArray(data.response)) {
       sectorData = data.response.map(item => ({
@@ -168,7 +175,7 @@ router.get("/sector-performance", async (req, res) => {
         marketCap: null
       }));
     }
-    
+
     res.json({
       success: true,
       type: "sector-performance",
@@ -187,7 +194,11 @@ router.get("/market-status", async (req, res) => {
     res.json({
       success: true,
       type: "market-status",
-      data: data.response || [],
+      data: [
+        {
+          "market_live": data.isOpen === "OPEN"
+        }
+      ] || [],
     });
   } catch (error) {
     console.error("Error fetching market status:", error);

@@ -8,13 +8,13 @@ export const CACHE_TTL = 5 * 60 * 1000;
 
 // API Sources
 export const SOURCES = {
-  ongoing: "https://www.nepalipaisa.com/api/GetIpos?stockSymbol=&pageNo=1&itemsPerPage=10&pagePerDisplay=5",
+  ongoing: "https://sharehubnepal.com/data/api/v1/public-offering/?size=10&type=0&for=2",
   upcoming: "https://www.onlinekhabar.com/smtm/home/ipo-corner-upcoming",
   tickers: "https://www.onlinekhabar.com/smtm/stock_live/live-trading",
-  news: "https://www.onlinekhabar.com/wp-json/okapi/v1/category-posts?category=share-market",
+  news: "https://www.onlinekhabar.com/wp-json/okapi/v1/category-posts?category=share-market&limit=30",
   indices: "https://www.onlinekhabar.com/smtm/home/indices-data/nepse/1d",
   sectorPerformance: "https://www.onlinekhabar.com/smtm/stock_live/sector-performance",
-  marketStatus: "https://www.onlinekhabar.com/smtm/home/market-status",
+  marketStatus: "https://sharehubnepal.com/live/api/v1/nepselive/market-status",
   trendingStocks: "https://www.onlinekhabar.com/smtm/home/trending",
 };
 

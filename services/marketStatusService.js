@@ -42,19 +42,17 @@ async function checkMarketStatusAndNotify() {
     // Fetch current market status directly from API
     const marketStatusResponse = await fetchDirectly(SOURCES.marketStatus);
     
-    if (!marketStatusResponse || !marketStatusResponse.response || !Array.isArray(marketStatusResponse.response)) {
+    // Updated validation for new response format
+    if (!marketStatusResponse || typeof marketStatusResponse.isOpen === 'undefined') {
       console.log("❌ Invalid market status response");
       return;
     }
     
-    const currentMarketStatus = marketStatusResponse.response[0]?.market_live;
+    // Parse market status from new response format
+    const currentMarketStatus = marketStatusResponse.isOpen === "OPEN";
+    const statusTime = marketStatusResponse.asOf || new Date().toISOString();
     
-    if (currentMarketStatus === undefined) {
-      console.log("❌ Market status not found in response");
-      return;
-    }
-    
-    console.log(`📊 Current market status: ${currentMarketStatus ? 'OPEN' : 'CLOSED'}`);
+    console.log(`📊 Current market status: ${currentMarketStatus ? 'OPEN' : 'CLOSED'} (as of ${statusTime})`);
     
     // Check if market just opened (previous status was false/null, current is true)
     const marketJustOpened = (marketState.lastMarketStatus === false || marketState.lastMarketStatus === null) 
@@ -80,7 +78,8 @@ async function checkMarketStatusAndNotify() {
           timestamp: now.toISOString(),
           market_live: true,
           source: 'api_detection',
-          day: now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Kathmandu' })
+          day: now.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Kathmandu' }),
+          api_as_of: statusTime
         }
       );
       

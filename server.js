@@ -105,7 +105,7 @@ async function startServer() {
     initializePriceAlertService();
     initializeDataFetchingService();
     initializeMarketStatusService();
-    sendHelloWorldNotification();
+    // sendHelloWorldNotification();
     
     // Start the server
     app.listen(PORT, () => {

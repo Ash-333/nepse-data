@@ -84,7 +84,7 @@ async function checkPriceAlerts() {
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const currentDay = dayNames[nepalTime.getDay()];
     const currentTime = nepalTime.toLocaleTimeString();
-    
+
     if (!isBusinessDay()) {
       console.log(`⏭️ Skipping price alerts - ${currentDay} is not a business day`);
     } else if (!isMarketHours()) {
@@ -137,7 +137,7 @@ async function checkPriceAlerts() {
         if (alert.userId.pushTokens && alert.userId.pushTokens.length > 0) {
           const title = `🎯 Price Alert: ${alert.ticker}`;
           const body = `${alert.ticker} is now ${alert.condition} your target price of ${alert.targetPrice}. Current price: ${currentPrice}`;
-          
+
           await sendPushNotification(
             alert.userId.pushTokens,
             title,
@@ -170,46 +170,37 @@ async function checkIpoUpdates() {
     const now = getCurrentTimeInNepal();
     console.log(`🔍 [${now.toISOString()}] Checking IPO updates...`);
 
-    // Check ongoing IPOs
-    const currentOngoingIpos = await fetchWithCache("ongoing-ipos", SOURCES.ongoing);
-    const ongoingData = currentOngoingIpos?.ResponseData || [];
+    // Check ongoing IPOs with direct fetch
+    const response = await fetch(SOURCES.ongoing);
+    if (!response.ok) throw new Error(`Failed to fetch ongoing IPOs: ${response.status}`);
+    const currentOngoingIpos = await response.json();
 
-    if (ongoingData.length !== previousStates.ongoingIpos.length) {
-      console.log(`📈 Ongoing IPOs changed: ${previousStates.ongoingIpos.length} → ${ongoingData.length}`);
-      
-      if (ongoingData.length > previousStates.ongoingIpos.length) {
-        const newIpos = ongoingData.filter(ipo => 
-          !previousStates.ongoingIpos.some(prevIpo => prevIpo.finid === ipo.finid)
+    // Extract the content array from the new API response format
+    const ongoingData = currentOngoingIpos?.data?.content || [];
+
+    // Filter for IPOs that are not closed
+    const openIpos = ongoingData.filter(ipo => ipo.status === "Closed");
+
+    console.log(`📈 Found ${openIpos.length} open IPOs out of ${ongoingData.length} total`);
+
+    // Send notifications for all open IPOs
+    if (openIpos.length > 0) {
+      const allTokens = await getAllPushTokens();
+
+      for (const openIpo of openIpos) {
+        await sendPushNotification(
+          allTokens,
+          "📈 IPO Open for Application",
+          `Have you applied? There is an IPO open: ${openIpo.name}`,
+          {
+            type: 'open_ipo',
+            company: openIpo.name,
+            symbol: openIpo.symbol
+          }
         );
-
-        for (const newIpo of newIpos) {
-          // Send notification for new ongoing IPO
-          const allTokens = await getAllPushTokens();
-          await sendPushNotification(
-            allTokens,
-            "🆕 New IPO Alert",
-            `${newIpo.company_name} IPO is now open for application!`,
-            {
-              type: 'new_ipo',
-              company: newIpo.company_name,
-              sector: newIpo.Sector,
-              openDate: newIpo.open_date,
-              closeDate: newIpo.close_date,
-            }
-          );
-        }
       }
-      
-      previousStates.ongoingIpos = ongoingData;
-    }
 
-    // Check upcoming IPOs
-    const currentUpcomingIpos = await fetchWithCache("upcoming-ipos", SOURCES.upcoming);
-    const upcomingData = currentUpcomingIpos || [];
-
-    if (upcomingData.length !== previousStates.upcomingIpos.length) {
-      console.log(`📅 Upcoming IPOs changed: ${previousStates.upcomingIpos.length} → ${upcomingData.length}`);
-      previousStates.upcomingIpos = upcomingData;
+      console.log(`✅ Sent notifications for ${openIpos.length} open IPOs`);
     }
 
   } catch (error) {
@@ -222,7 +213,7 @@ export async function getAllPushTokens() {
     // Get tokens from authenticated users
     const users = await User.find({ pushTokens: { $exists: true, $not: { $size: 0 } } });
     const userTokens = users.flatMap(user => user.pushTokens || []);
-    
+
     // Get legacy public tokens
     const publicTokens = await PushToken.find({});
     const legacyTokens = publicTokens.map(token => token.token);
@@ -239,16 +230,21 @@ export async function getAllPushTokens() {
 // Initialize price alert monitoring
 export function initializePriceAlertService() {
   console.log("🚀 Initializing price alert service...");
-  
+
   // Check price alerts every 2 minutes
   cron.schedule('*/2 * * * *', checkPriceAlerts, {
     timezone: "Asia/Kathmandu"
   });
 
-  // Check IPO updates every 10 minutes
-cron.schedule('0 10,20 * * *', checkIpoUpdates, {
-  timezone: "Asia/Kathmandu"
-});
+  // Check IPO updates daily at 10 AM
+  cron.schedule('0 10 * * *', checkIpoUpdates, {
+    timezone: "Asia/Kathmandu"
+  });
+
+  // Check IPO updates daily at 8 PM
+  cron.schedule('0 20 * * *', checkIpoUpdates, {
+    timezone: "Asia/Kathmandu"
+  });
 
 
   console.log("✅ Price alert service initialized");
